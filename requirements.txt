@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+line-bot-sdk
+gspread
+google-auth
+openai
