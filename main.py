@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import requests
 import gspread
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
@@ -17,6 +18,9 @@ from openai import OpenAI
 app = FastAPI(title="耘箖環衛 LINE AI 客服")
 
 CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "")
+LINE_CHANNEL_ACCESS_TOKEN = os.environ.get(
+    "LINE_CHANNEL_ACCESS_TOKEN", ""
+)
 GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "")
 GOOGLE_SERVICE_ACCOUNT_JSON = os.environ.get(
     "GOOGLE_SERVICE_ACCOUNT_JSON", ""
@@ -46,6 +50,45 @@ def get_cases_sheet():
     client = get_google_sheets_client()
     spreadsheet = client.open_by_key(GOOGLE_SHEET_ID)
     return spreadsheet.worksheet("客服案件紀錄")
+
+
+def get_line_display_name(user_id):
+    """查詢 LINE 顯示名稱；失敗時回傳空字串。"""
+    if not user_id or user_id == "無法取得使用者ID":
+        return ""
+
+    if not LINE_CHANNEL_ACCESS_TOKEN:
+        print("LINE 暱稱查詢失敗：未設定 Access Token")
+        return ""
+
+    try:
+        response = requests.get(
+            f"https://api.line.me/v2/bot/profile/{user_id}",
+            headers={
+                "Authorization": (
+                    f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"
+                )
+            },
+            timeout=5,
+        )
+
+        if response.status_code == 200:
+            return (
+                response.json().get("displayName", "").strip()
+            )
+
+        print(
+            "LINE 暱稱查詢未成功，HTTP 狀態碼："
+            f"{response.status_code}"
+        )
+
+    except Exception as e:
+        print(
+            "LINE 暱稱查詢失敗，錯誤類型："
+            f"{type(e).__name__}"
+        )
+
+    return ""
 
 
 def generate_ai_draft(customer_message):
@@ -99,6 +142,7 @@ def generate_ai_draft(customer_message):
 
 
 def save_customer_message(user_id, message):
+    """建立案件：C 欄先放暫用名稱，G 欄保存 LINE 使用者 ID。"""
     sheet = get_cases_sheet()
     now = datetime.now(ZoneInfo("Asia/Taipei"))
     case_id = (
@@ -109,11 +153,11 @@ def save_customer_message(user_id, message):
     row = [
         case_id,
         now.strftime("%Y-%m-%d %H:%M:%S"),
-        user_id or "無法取得使用者ID",
+        "LINE客戶（暱稱查詢中）",
         message,
         "",
         "待審核",
-        "",
+        user_id or "無法取得使用者ID",
         "未發送",
         "",
         "",
@@ -169,12 +213,18 @@ async def line_webhook(request: Request):
     expected_signature = base64.b64encode(digest).decode("utf-8")
 
     if not hmac.compare_digest(expected_signature, signature):
-        raise HTTPException(status_code=400, detail="Invalid signature")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid signature",
+        )
 
     try:
         payload = json.loads(body)
     except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid JSON")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid JSON",
+        )
 
     for event in payload.get("events", []):
         if event.get("type") != "message":
@@ -191,27 +241,56 @@ async def line_webhook(request: Request):
         source = event.get("source", {})
         user_id = source.get("userId", "")
 
-        # 先記錄原始案件；寫入失敗才回報 Webhook 錯誤。
+        # 先保存案件及使用者 ID，避免查詢暱稱失敗造成案件遺失。
         try:
-            case_id = save_customer_message(user_id, customer_text)
-        except Exception:
+            case_id = save_customer_message(
+                user_id, customer_text
+            )
+        except Exception as e:
+            print(
+                "案件寫入失敗，錯誤類型："
+                f"{type(e).__name__}"
+            )
             raise HTTPException(
                 status_code=500,
                 detail="案件寫入失敗",
             )
 
-       
+        # 查詢暱稱並更新 C 欄；G 欄保留真正的 LINE 使用者 ID。
+        try:
+            display_name = get_line_display_name(user_id)
+            sheet = get_cases_sheet()
+            cell = sheet.find(case_id)
+
+            if cell is not None:
+                if display_name:
+                    sheet.update_cell(
+                        cell.row, 3, display_name
+                    )
+                else:
+                    sheet.update_cell(
+                        cell.row, 3, "LINE客戶（暱稱無法取得）"
+                    )
+
+        except Exception as e:
+            print(
+                "LINE 暱稱寫入失敗，錯誤類型："
+                f"{type(e).__name__}"
+            )
+
         # AI 只產生草稿並更新 E 欄，不傳送 LINE 訊息。
         try:
             draft = generate_ai_draft(customer_text)
             sheet = get_cases_sheet()
             cell = sheet.find(case_id)
+
             if cell is not None:
                 sheet.update_cell(cell.row, 5, draft)
 
         except Exception as e:
             print(
-                f"AI草稿處理失敗，錯誤類型：{type(e).__name__}"
+                "AI草稿處理失敗，錯誤類型："
+                f"{type(e).__name__}"
             )
             print(f"錯誤內容：{str(e)[:200]}")
 
@@ -219,6 +298,7 @@ async def line_webhook(request: Request):
             try:
                 sheet = get_cases_sheet()
                 cell = sheet.find(case_id)
+
                 if cell is not None:
                     sheet.update_cell(
                         cell.row,
