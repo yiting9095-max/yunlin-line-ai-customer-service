@@ -218,8 +218,29 @@ async def line_webhook(request: Request):
                         10,
                         "AI草稿產生或寫入失敗，請人工檢查",
                     )
-            except Exception:
-                pass
+            
+        except Exception as e:
+            print(
+                f"AI草稿處理失敗，錯誤類型：{type(e).__name__}"
+            )
+            print(f"錯誤內容：{str(e)[:200]}")
+
+            # 案件保留，於 J 欄提示行政人員人工處理。
+            try:
+                sheet = get_cases_sheet()
+                cell = sheet.find(case_id)
+                if cell is not None:
+                    sheet.update_cell(
+                        cell.row,
+                        10,
+                        "AI草稿產生或寫入失敗，請查看 Render Logs",
+                    )
+            except Exception as sheet_error:
+                print(
+                    "寫入錯誤備註失敗，錯誤類型："
+                    f"{type(sheet_error).__name__}"
+                )
+
 
     # 不使用 reply token、不呼叫 LINE 發送 API。
     return JSONResponse({"status": "ok"})
