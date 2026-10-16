@@ -200,6 +200,7 @@ async def line_webhook(request: Request):
                 detail="案件寫入失敗",
             )
 
+       
         # AI 只產生草稿並更新 E 欄，不傳送 LINE 訊息。
         try:
             draft = generate_ai_draft(customer_text)
@@ -207,18 +208,7 @@ async def line_webhook(request: Request):
             cell = sheet.find(case_id)
             if cell is not None:
                 sheet.update_cell(cell.row, 5, draft)
-        except Exception:
-            # 案件保留，於 J 欄提示行政人員人工處理。
-            try:
-                sheet = get_cases_sheet()
-                cell = sheet.find(case_id)
-                if cell is not None:
-                    sheet.update_cell(
-                        cell.row,
-                        10,
-                        "AI草稿產生或寫入失敗，請人工檢查",
-                    )
-            
+
         except Exception as e:
             print(
                 f"AI草稿處理失敗，錯誤類型：{type(e).__name__}"
@@ -240,7 +230,6 @@ async def line_webhook(request: Request):
                     "寫入錯誤備註失敗，錯誤類型："
                     f"{type(sheet_error).__name__}"
                 )
-
 
     # 不使用 reply token、不呼叫 LINE 發送 API。
     return JSONResponse({"status": "ok"})
