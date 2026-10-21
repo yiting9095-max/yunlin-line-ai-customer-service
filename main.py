@@ -236,13 +236,28 @@ async def test_sheets():
     try:
         client = get_google_sheets_client()
         spreadsheet = client.open_by_key(GOOGLE_SHEET_ID)
+        sheet = spreadsheet.worksheet("客服案件紀錄")
+        rows = sheet.get_all_values()
+
+        print(f"試算表連線成功：{spreadsheet.title}")
+        print(f"客服案件紀錄資料列數：{len(rows)}")
+        print(f"第一列欄位標題：{rows[0] if rows else '工作表完全沒有資料'}")
+        print(f"最後一列資料：{rows[-1] if rows else '工作表完全沒有資料'}")
+
         return {
             "status": "connected",
             "spreadsheet": spreadsheet.title,
-            "worksheets": [worksheet.title for worksheet in spreadsheet.worksheets()],
+            "worksheet": sheet.title,
+            "total_rows": len(rows),
+            "last_case_id": rows[-1][0] if len(rows) > 1 and rows[-1] else "",
         }
-    except Exception:
-        raise HTTPException(status_code=500, detail="Google 試算表連線失敗")
+
+    except Exception as e:
+        print(f"試算表診斷失敗：{type(e).__name__}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"試算表診斷失敗：{type(e).__name__}: {e}",
+        )
 
 
 @app.get("/admin", response_class=HTMLResponse)
