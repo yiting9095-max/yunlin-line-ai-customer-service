@@ -321,7 +321,7 @@ async def admin_page(_: str = Depends(require_admin)):
     body = """
     <div class="card">
       <h2>案件審核區</h2>
-      <p class="muted">本次讀取到 {max(0, len(rows) - 1)} 筆資料列（不含標題列）。先檢查客戶訊息，再編輯回覆。按「儲存草稿」只會保存文字，不會發送；按「核准並發送 LINE」才會呼叫 LINE API。</p>
+      <p class="muted">先檢查客戶訊息，再編輯回覆。按「儲存草稿」只會保存文字，不會發送；按「核准並發送 LINE」才會呼叫 LINE API。</p>
       <button class="secondary" onclick="location.reload()">重新整理案件</button>
     </div>
     """ + "".join(cards) + """
