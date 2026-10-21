@@ -266,8 +266,12 @@ async def admin_page(_: str = Depends(require_admin)):
     try:
         sheet = get_cases_sheet()
         rows = sheet.get_all_values()
-    except Exception:
-        raise HTTPException(status_code=500, detail="讀取 Google 試算表失敗，請查看 Render Logs")
+        print(f"/admin 讀取工作表：{sheet.title}；資料列數：{len(rows)}")
+        print(f"/admin 第一列欄位：{rows[0] if rows else '無資料'}")
+        print(f"/admin 最後一列案件編號：{rows[-1][0] if len(rows) > 1 and rows[-1] else '無案件編號'}")
+    except Exception as e:
+        print(f"/admin 讀取試算表失敗：{type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail=f"讀取 Google 試算表失敗：{type(e).__name__}，請查看 Render Logs")
     cards = []
     # 第一列視為欄位標題；從第二列開始顯示。
     for row_number, row in enumerate(rows[1:], start=2):
@@ -317,7 +321,7 @@ async def admin_page(_: str = Depends(require_admin)):
     body = """
     <div class="card">
       <h2>案件審核區</h2>
-      <p class="muted">先檢查客戶訊息，再編輯回覆。按「儲存草稿」只會保存文字，不會發送；按「核准並發送 LINE」才會呼叫 LINE API。</p>
+      <p class="muted">本次讀取到 {max(0, len(rows) - 1)} 筆資料列（不含標題列）。先檢查客戶訊息，再編輯回覆。按「儲存草稿」只會保存文字，不會發送；按「核准並發送 LINE」才會呼叫 LINE API。</p>
       <button class="secondary" onclick="location.reload()">重新整理案件</button>
     </div>
     """ + "".join(cards) + """
