@@ -273,8 +273,8 @@ async def admin_page(_: str = Depends(require_admin)):
         print(f"/admin 讀取試算表失敗：{type(e).__name__}: {e}")
         raise HTTPException(status_code=500, detail=f"讀取 Google 試算表失敗：{type(e).__name__}，請查看 Render Logs")
     cards = []
-    # 第一列視為欄位標題；從第二列開始顯示。
-    for row_number, row in enumerate(rows[1:], start=2):
+    # 第一列視為欄位標題；案件由新到舊顯示，讓最新案件優先出現在最上方。
+    for row in reversed(rows[1:]):
         row = row + [""] * max(0, 10 - len(row))
         case_id, created, nickname, customer_msg, draft, review_status, user_id, send_status, note, error = row[:10]
         if not case_id:
